@@ -41,7 +41,7 @@ public abstract class BaseFragment extends FragmentWithBus {
 
     @Nullable
     @Override
-    public final View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         final int themeResId = getFragmentTheme();
 
         final Resources.Theme theme = getActivity().getTheme();

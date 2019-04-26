@@ -50,7 +50,11 @@ import android.widget.Toast;
 
 import com.cliqz.browser.R;
 import com.cliqz.browser.app.BrowserApp;
-import com.cliqz.browser.controlcenter.ControlCenterDialog;
+import com.cliqz.browser.controlcenter.AdBlockDetailsModel;
+import com.cliqz.browser.controlcenter.ControlCenterCallback;
+import com.cliqz.browser.controlcenter.ControlCenterContainer;
+import com.cliqz.browser.controlcenter.ControlCenterHelper;
+import com.cliqz.browser.controlcenter.TrackerDetailsModel;
 import com.cliqz.browser.main.CliqzBrowserState.Mode;
 import com.cliqz.browser.main.Messages.ControlCenterStatus;
 import com.cliqz.browser.main.search.SearchView;
@@ -64,12 +68,16 @@ import com.cliqz.browser.webview.BrowserActionTypes;
 import com.cliqz.browser.webview.CliqzMessages;
 import com.cliqz.browser.widget.OverFlowMenu;
 import com.cliqz.browser.widget.SearchBar;
+import com.cliqz.jsengine.Adblocker;
+import com.cliqz.jsengine.AntiTracking;
 import com.cliqz.nove.Subscribe;
 import com.cliqz.utils.ActivityUtils;
 import com.cliqz.utils.FragmentUtilsV4;
 import com.cliqz.utils.NoInstanceException;
 import com.cliqz.utils.StreamUtils;
 import com.cliqz.utils.ViewUtils;
+import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.readystatesoftware.systembartint.SystemBarTintManager;
 
 import org.json.JSONArray;
@@ -80,6 +88,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.Collections;
 
 import javax.inject.Inject;
 
@@ -99,7 +109,8 @@ import butterknife.OnEditorAction;
  * @author Stefano Pacifici
  * @author Moaz Mohamed
  */
-public class TabFragment extends BaseFragment implements LightningView.LightingViewListener {
+public class TabFragment extends BaseFragment implements LightningView.LightingViewListener,
+        ControlCenterCallback, ControlCenterCallback.TelemetryCallback {
 
     @SuppressWarnings("unused")
     private static final String TAG = TabFragment.class.getSimpleName();
@@ -196,6 +207,18 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     @Nullable
     @Bind(R.id.cc_icon)
     AppCompatImageView ccIcon;
+
+    @Inject
+    Adblocker adblocker;
+
+    @Inject
+    AntiTracking antiTracking;
+
+    ControlCenterHelper controlCenterHelper;
+    ControlCenterContainer controlCenterContainer;
+    View contentContainer;
+
+    private int mHashCode;
 
     @NonNull
     public final String getTabId() {
@@ -331,6 +354,14 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
             }
         });
         onPageFinished(null);
+
+        controlCenterContainer = view.findViewById(R.id.control_center_container);
+        contentContainer = view.findViewById(R.id.content_container);
+
+        controlCenterHelper = new ControlCenterHelper(controlCenterContainer, contentContainer,
+                this, this,
+                getChildFragmentManager());
+        controlCenterHelper.init();
     }
 
     @Override
@@ -503,10 +534,13 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     // TODO @Ravjit, the dialog should disappear if you pause the app
     @OnClick(R.id.control_center)
     void showControlCenter() {
+        controlCenterHelper.toggleControlCenter();
+        controlCenterHelper.setUrl(mLightningView.getUrl());
+        controlCenterHelper.setIsIncognito(mIsIncognito);
         final WebView webView = mLightningView.getWebView();
-        final ControlCenterDialog controlCenterDialog = ControlCenterDialog
-                .create(mStatusBar, mIsIncognito, webView.hashCode(), mLightningView.getUrl());
-        controlCenterDialog.show(getChildFragmentManager(), Constants.CONTROL_CENTER);
+        mHashCode = webView.hashCode();
+        updateTrackerList();
+        updateAdBlockList();
         telemetry.sendControlCenterOpenSignal(mIsIncognito, mTrackerCount);
     }
 
@@ -1013,14 +1047,58 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
         mTrackerCount++;
         // Quick fix for Ad-Block loading problems (attrack.isWhitelist(...) timeout)
         if (mTrackerCount == 1) {
+            updateControlCenterIcon(true);
             bus.post(new Messages.UpdateControlCenterIcon(ControlCenterStatus.ENABLED));
         }
         searchBar.setTrackerCount(mTrackerCount);
         if (mTrackerCount > 0 && onBoardingHelper.conditionallyShowAntiTrackingDescription()) {
             hideKeyboard(null);
         }
-        bus.post(new Messages.UpdateAntiTrackingList(mTrackerCount));
-        bus.post(new Messages.UpdateAdBlockingList());
+        /*bus.post(new Messages.UpdateAntiTrackingList(mTrackerCount));
+        bus.post(new Messages.UpdateAdBlockingList());*/
+        updateTrackerList();
+        updateAdBlockList();
+    }
+
+    void updateAdBlockList() {
+        final ArrayList<AdBlockDetailsModel> adBlockDetails = new ArrayList<>();
+        final int hashCode = mLightningView.getWebView().hashCode();
+        final ReadableMap adBlockData = adblocker.getAdBlockingInfo(mHashCode);
+        if (adBlockData != null && adBlockData.hasKey("advertisersList")) {
+            final ReadableMap advertisersList = adBlockData.getMap("advertisersList");
+            final ReadableMapKeySetIterator iterator = advertisersList.keySetIterator();
+            while (iterator.hasNextKey()) {
+                final String companyName = iterator.nextKey();
+                final int count = advertisersList.getArray(companyName).size();
+                adBlockDetails.add(new AdBlockDetailsModel(companyName, count));
+            }
+            Collections.sort(adBlockDetails, (lhs, rhs) -> {
+                final int count = rhs.adBlockCount - lhs.adBlockCount;
+                return count != 0 ? count : lhs.companyName.compareToIgnoreCase(rhs.companyName);
+            });
+        }
+        controlCenterHelper.updateAdBlockList(adBlockDetails);
+    }
+
+    void updateTrackerList() {
+        mTrackerCount = 0;
+        final ArrayList<TrackerDetailsModel> trackerDetails = new ArrayList<>();
+        final int hashCode = mLightningView.getWebView().hashCode();
+        final ReadableMap antiTrackingData = antiTracking.getTabBlockingInfo(mHashCode);
+        if (antiTrackingData != null) {
+            final ReadableMapKeySetIterator iterator = antiTrackingData.keySetIterator();
+            while (iterator.hasNextKey()) {
+                final String companyName = iterator.nextKey();
+                final int trackersCount = antiTrackingData.getInt(companyName);
+                mTrackerCount += trackersCount;
+                trackerDetails.add(new TrackerDetailsModel(companyName, trackersCount));
+            }
+            Collections.sort(trackerDetails, (lhs, rhs) -> {
+                final int count = rhs.trackerCount - lhs.trackerCount;
+                return count != 0 ? count : lhs.companyName.compareToIgnoreCase(rhs.companyName);
+            });
+        }
+        controlCenterHelper.updateTrackerList(trackerDetails, mTrackerCount);
     }
 
     @Override
@@ -1290,6 +1368,12 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
         }
     }
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        controlCenterHelper.closeControlCenter();
+    }
+
     protected void disableUrlBarScrolling() {
         final AppBarLayout.LayoutParams params = (AppBarLayout.LayoutParams) mToolbar.getLayoutParams();
         params.setScrollFlags(0);
@@ -1323,4 +1407,112 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     public void openFromOverview(CliqzMessages.OpenLink event) {
         mOverviewEvent = event;
     }
+
+    @Override
+    public void closeControlCenter() {
+        controlCenterHelper.closeControlCenter();
+    }
+
+    @Override
+    public void enableAdBlocking() {
+        if (!preferenceManager.getAdBlockEnabled()) {
+            bus.post(new Messages.EnableAdBlock());
+            telemetry.sendCCOkSignal(TelemetryKeys.ACTIVATE, TelemetryKeys.ADBLOCK);
+        } else {
+            telemetry.sendCCOkSignal(TelemetryKeys.OK, TelemetryKeys.ATTRACK);
+        }
+    }
+
+    @Override
+    public void enableAntiTracking() {
+        if (!preferenceManager.isAttrackEnabled()) {
+            bus.post(new Messages.EnableAttrack());
+            telemetry.sendCCOkSignal(TelemetryKeys.ACTIVATE, TelemetryKeys.ATTRACK);
+        } else {
+            telemetry.sendCCOkSignal(TelemetryKeys.OK, TelemetryKeys.ATTRACK);
+        }
+    }
+
+    @Override
+    public void updateControlCenterIcon(boolean isEnabled) {
+        final ControlCenterStatus status =
+                isEnabled ? ControlCenterStatus.ENABLED : ControlCenterStatus.DISABLED;
+        bus.post(new Messages.UpdateControlCenterIcon(status));
+    }
+
+    @Override
+    public void openLink(@NonNull String url) {
+        bus.post(new BrowserEvents.OpenUrlInNewTab(url));
+    }
+
+    @Override
+    public void openLink(@NonNull String url, boolean isIncognito) {
+        bus.post(new BrowserEvents.OpenUrlInNewTab(url, isIncognito));
+    }
+
+    @Override
+    public void toggleAdBlock(@NonNull String url, boolean domain) {
+        adblocker.toggleUrl(url, domain);
+    }
+
+    @Override
+    public boolean isAdBlockEnabled() {
+        return preferenceManager.getAdBlockEnabled();
+    }
+
+    @Override
+    public boolean isAntiTrackingEnabled() {
+        return preferenceManager.isAttrackEnabled();
+    }
+
+    @Override
+    public boolean isUrlBlackListed(@NonNull String url) {
+        return adblocker.isBlacklisted(url);
+    }
+
+    @Override
+    public boolean isUrlWhiteListed(@NonNull String url) {
+        return antiTracking.isWhitelisted(url);
+    }
+
+    @Override
+    public void addDomainToWhitelist(@NonNull String domain) {
+        antiTracking.addDomainToWhitelist(domain);
+    }
+
+    @Override
+    public void removeDomainToWhitelist(@NonNull String domain) {
+        antiTracking.removeDomainFromWhitelist(domain);
+    }
+
+    @Override
+    public void reloadCurrentPage() {
+        mLightningView.getWebView().reload();
+    }
+
+    @Override
+    public void sendCCTabSignal(String currentPage) {
+        telemetry.sendCCTabSignal(currentPage);
+    }
+
+    @Override
+    public void sendCCCompanyInfoSignal(int index, String view) {
+        telemetry.sendCCCompanyInfoSignal(index, view);
+    }
+
+    @Override
+    public void sendCCToggleSignal(boolean isChecked, String view) {
+        telemetry.sendCCToggleSignal(isChecked, view);
+    }
+
+    @Override
+    public void sendLearnMoreClickSignal(String view) {
+        telemetry.sendLearnMoreClickSignal(view);
+    }
+
+    @Override
+    public void sendCCOkSignal(String okOrActivate, String view) {
+        telemetry.sendCCOkSignal(okOrActivate, view);
+    }
+
 }

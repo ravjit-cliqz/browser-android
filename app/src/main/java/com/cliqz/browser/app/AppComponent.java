@@ -3,8 +3,6 @@ package com.cliqz.browser.app;
 import com.cliqz.browser.abtesting.ABTestFetcher;
 import com.cliqz.browser.connect.PairedDevicesFragment;
 import com.cliqz.browser.connect.SyncActivity;
-import com.cliqz.browser.controlcenter.ControlCenterComponent;
-import com.cliqz.browser.controlcenter.ControlCenterModule;
 import com.cliqz.browser.gcm.MessageListenerService;
 import com.cliqz.browser.gcm.NotificationDismissedReceiver;
 import com.cliqz.browser.gcm.RegistrationIntentService;
@@ -69,7 +67,6 @@ public interface AppComponent {
 
     MainActivityComponent plus(MainActivityModule module);
 
-    ControlCenterComponent plus(ControlCenterModule dialog);
 
     void inject(BaseSettingsFragment baseSettingsFragment);
 

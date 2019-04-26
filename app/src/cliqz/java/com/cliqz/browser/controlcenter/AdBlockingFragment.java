@@ -5,7 +5,6 @@ import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
 import android.support.annotation.LayoutRes;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.widget.AppCompatButton;
 import android.support.v7.widget.AppCompatImageView;
@@ -19,24 +18,12 @@ import android.widget.Switch;
 import android.widget.TextView;
 
 import com.cliqz.browser.R;
-import com.cliqz.browser.main.Messages;
-import com.cliqz.browser.telemetry.Telemetry;
 import com.cliqz.browser.telemetry.TelemetryKeys;
-import com.cliqz.jsengine.Adblocker;
-import com.cliqz.nove.Bus;
-import com.cliqz.nove.Subscribe;
-import com.facebook.react.bridge.ReadableMap;
-import com.facebook.react.bridge.ReadableMapKeySetIterator;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-import javax.inject.Inject;
-
-import acr.browser.lightning.bus.BrowserEvents;
-import acr.browser.lightning.preference.PreferenceManager;
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
@@ -51,21 +38,6 @@ public class AdBlockingFragment extends ControlCenterFragment implements Compoun
 
     private static final String adBlockingHelpUrlDe = "https://cliqz.com/whycliqz/adblocking";
     private static final String adBlockingHelpUrlEn = "https://cliqz.com/en/whycliqz/adblocking";
-    private AdBlockListAdapter mAdapter;
-    private String mUrl;
-    private int mHashCode;
-
-    @Inject
-    public Bus bus;
-
-    @Inject
-    public Telemetry telemetry;
-
-    @Inject
-    public Adblocker adb;
-
-    @Inject
-    PreferenceManager preferenceManager;
 
     @Bind(R.id.counter)
     TextView counter;
@@ -103,34 +75,12 @@ public class AdBlockingFragment extends ControlCenterFragment implements Compoun
     @Bind(R.id.ads_blocked)
     TextView adsBlocked;
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        bus.register(this);
-        updateList();
-    }
-
-    @Override
-    public void onPause() {
-        super.onPause();
-        bus.unregister(this);
-    }
-
-    @Override
-    public void onCreate(@Nullable Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        final Bundle arguments = getArguments();
-        if (arguments != null) {
-            mIsIncognito = arguments.getBoolean(KEY_IS_INCOGNITO, false);
-            mUrl = arguments.getString(ControlCenterFragment.KEY_URL);
-            mHashCode = arguments.getInt(KEY_HASHCODE);
-        }
-    }
+    private AdBlockListAdapter mAdapter;
 
     @Override
     protected View onCreateThemedView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        ControlCenterDialog.getComponent().inject(this);
-        mAdapter = new AdBlockListAdapter(mIsIncognito, this);
+        mAdapter = new AdBlockListAdapter(getContext(), controlCenterCallback, telemetryCallback,
+                mIsIncognito);
         final @LayoutRes int layout;
         final Configuration config = getResources().getConfiguration();
         switch (config.orientation) {
@@ -153,12 +103,12 @@ public class AdBlockingFragment extends ControlCenterFragment implements Compoun
         view.setAlpha(0.97f);
         trackersList.setLayoutManager(new LinearLayoutManager(getContext()));
         trackersList.setAdapter(mAdapter);
-        final boolean isEnabled = !adb.isBlacklisted(mUrl);
+        final boolean isEnabled = !controlCenterCallback.isUrlBlackListed(mUrl);
         enableAdBlock.setChecked(isEnabled);
         enableAdBlock.setText(Uri.parse(mUrl).getHost());
         enableAdBlock.setOnCheckedChangeListener(this);
         setEnabled(isEnabled);
-        if (!preferenceManager.getAdBlockEnabled()) {
+        if (!controlCenterCallback.isAdBlockEnabled()) {
             setAdBlockGloballyDisabledView();
         }
         return view;
@@ -189,7 +139,7 @@ public class AdBlockingFragment extends ControlCenterFragment implements Compoun
         }
     }
 
-    private int countTotalAds(ArrayList<AdBlockDetailsModel> mDetails) {
+    private int countTotalAds(List<AdBlockDetailsModel> mDetails) {
         int adCount = 0;
         for (AdBlockDetailsModel model : mDetails) {
             adCount += model.adBlockCount;
@@ -197,8 +147,8 @@ public class AdBlockingFragment extends ControlCenterFragment implements Compoun
         return adCount;
     }
 
-    private void setTableVisibility(ArrayList<AdBlockDetailsModel> details) {
-        if (!preferenceManager.getAdBlockEnabled()) {
+    private void setTableVisibility(List<AdBlockDetailsModel> details) {
+        if (!controlCenterCallback.isAdBlockEnabled()) {
             antitrackingTable.setVisibility(View.GONE);
             trackersList.setVisibility(View.GONE);
             return;
@@ -208,80 +158,51 @@ public class AdBlockingFragment extends ControlCenterFragment implements Compoun
                     View.VISIBLE : View.GONE;
             antitrackingTable.setVisibility(visibility);
         }
+
     }
 
-    @SuppressWarnings("UnusedParameters")
+    @Override
+    public int getTitle() {
+        return R.string.control_center_header_adblocking;
+    }
+
     @OnClick(R.id.button_ok)
-    void onOkClicked(View v) {
-        bus.post(new Messages.DismissControlCenter());
-        if (!preferenceManager.getAdBlockEnabled()) {
-            bus.post(new Messages.EnableAdBlock());
-            telemetry.sendCCOkSignal(TelemetryKeys.ACTIVATE, TelemetryKeys.ADBLOCK);
-        } else {
-            telemetry.sendCCOkSignal(TelemetryKeys.OK, TelemetryKeys.ATTRACK);
-        }
+    void onOkClicked() {
+        controlCenterCallback.closeControlCenter();
+        controlCenterCallback.enableAdBlocking();
     }
 
-    @SuppressWarnings("UnusedParameters")
     @OnClick(R.id.learn_more)
-    void onLearnMoreClicked(View v) {
+    void onLearnMoreClicked() {
         final String helpUrl = Locale.getDefault().getLanguage().equals("de") ?
                 adBlockingHelpUrlDe : adBlockingHelpUrlEn;
-        bus.post(new BrowserEvents.OpenUrlInNewTab(helpUrl));
-        bus.post(new Messages.DismissControlCenter());
-        telemetry.sendLearnMoreClickSignal(TelemetryKeys.ADBLOCK);
+        controlCenterCallback.openLink(helpUrl);
+        controlCenterCallback.closeControlCenter();
+        telemetryCallback.sendLearnMoreClickSignal(TelemetryKeys.ADBLOCK);
     }
 
-    @SuppressWarnings("UnusedParameters")
-    @Subscribe
-    public void updateList(Messages.UpdateAdBlockingList event) {
-        updateList();
-    }
-
-    void updateList() {
-        ArrayList<AdBlockDetailsModel> details = getAdBlockDetails();
-        final int adCount = countTotalAds(details);
+    @Override
+    public void updateAdBlockList(List<AdBlockDetailsModel> adBlockDetails) {
+        if (getView() == null) return;
+        final int adCount = countTotalAds(adBlockDetails);
         counter.setText(String.format(Locale.getDefault(), "%d", adCount));
-        mAdapter.updateList(details);
-        setTableVisibility(details);
+        mAdapter.updateList(adBlockDetails);
+        setTableVisibility(adBlockDetails);
+        enableAdBlock.setText(Uri.parse(mUrl).getHost());
     }
 
-    @NonNull
-    private ArrayList<AdBlockDetailsModel> getAdBlockDetails() {
-        final ArrayList<AdBlockDetailsModel> adsDetails = new ArrayList<>();
-        final ReadableMap adBlockData = adb.getAdBlockingInfo(mHashCode);
-        if (adBlockData != null && adBlockData.hasKey("advertisersList")) {
-            final ReadableMap advertisersList = adBlockData.getMap("advertisersList");
-            final ReadableMapKeySetIterator iterator = advertisersList.keySetIterator();
-            while (iterator.hasNextKey()) {
-                final String companyName = iterator.nextKey();
-                final int count = advertisersList.getArray(companyName).size();
-                adsDetails.add(new AdBlockDetailsModel(companyName, count));
-            }
-            Collections.sort(adsDetails, (lhs, rhs) -> {
-                final int count = rhs.adBlockCount - lhs.adBlockCount;
-                return count != 0 ? count : lhs.companyName.compareToIgnoreCase(rhs.companyName);
-            });
-        }
-        return adsDetails;
+    @Override
+    public void updateTrackerList(List<TrackerDetailsModel> trackerDetails, int trackCount) {
+        // Do nothing
     }
 
     @Override
     public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
         setEnabled(isChecked);
-        adb.toggleUrl(mUrl, true);
-        telemetry.sendCCToggleSignal(isChecked, TelemetryKeys.ADBLOCK);
-        bus.post(new Messages.ReloadPage());
-        bus.post(new Messages.DismissControlCenter());
+        controlCenterCallback.toggleAdBlock(mUrl, true);
+        telemetryCallback.sendCCToggleSignal(isChecked, TelemetryKeys.ADBLOCK);
+        controlCenterCallback.closeControlCenter();
+        controlCenterCallback.reloadCurrentPage();
     }
 
-    public static AdBlockingFragment create(int hashCode, String url, boolean isIncognito) {
-        final AdBlockingFragment fragment = new AdBlockingFragment();
-        final Bundle arguments = new Bundle();
-        arguments.putInt(KEY_HASHCODE, hashCode);
-        arguments.putString(KEY_URL, url);
-        arguments.putBoolean(KEY_IS_INCOGNITO, isIncognito);
-        fragment.setArguments(arguments);
-        return fragment;
-    }
 }

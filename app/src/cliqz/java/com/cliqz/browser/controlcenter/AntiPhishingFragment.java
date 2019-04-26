@@ -10,16 +10,11 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import com.cliqz.browser.R;
-import com.cliqz.browser.main.Messages;
-import com.cliqz.browser.telemetry.Telemetry;
 import com.cliqz.browser.telemetry.TelemetryKeys;
-import com.cliqz.nove.Bus;
 
+import java.util.List;
 import java.util.Locale;
 
-import javax.inject.Inject;
-
-import acr.browser.lightning.bus.BrowserEvents;
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
@@ -33,26 +28,17 @@ public class AntiPhishingFragment extends ControlCenterFragment {
     private static final String antiPhishingHelupUrlDe = "https://cliqz.com/whycliqz/anti-phishing";
     private static final String antiPhishingHelupUrlEn = "https://cliqz.com/en/whycliqz/anti-phishing";
 
-    @Inject
-    Bus bus;
-
-    @Inject
-    Telemetry telemetry;
-
     @Bind(R.id.button_ok)
     AppCompatButton helpButton;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        final Bundle arguments = getArguments();
-        mIsIncognito = arguments.getBoolean(KEY_IS_INCOGNITO, false);
     }
 
     @Override
-    protected View onCreateThemedView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        //noinspection ConstantConditions
-        ControlCenterDialog.getComponent().inject(this);
+    protected View onCreateThemedView(LayoutInflater inflater, @Nullable ViewGroup container,
+                                      @Nullable Bundle savedInstanceState) {
         final @LayoutRes int layout;
         final Configuration config = getResources().getConfiguration();
         switch (config.orientation) {
@@ -76,20 +62,33 @@ public class AntiPhishingFragment extends ControlCenterFragment {
         return view;
     }
 
-    @SuppressWarnings("UnusedParameters")
-    @OnClick(R.id.button_ok)
-    void onHelpClickd(View v) {
-        bus.post(new Messages.DismissControlCenter());
-        telemetry.sendCCOkSignal(TelemetryKeys.OK, TelemetryKeys.ATPHISH);
+    @Override
+    public void updateAdBlockList(List<AdBlockDetailsModel> adBlockDetails) {
+
     }
 
-    @SuppressWarnings("UnusedParameters")
+    @Override
+    public void updateTrackerList(List<TrackerDetailsModel> trackerDetails, int trackCount) {
+
+    }
+
+    @OnClick(R.id.button_ok)
+    void onHelpClickd() {
+        controlCenterCallback.closeControlCenter();
+        telemetryCallback.sendCCOkSignal(TelemetryKeys.OK, TelemetryKeys.ATPHISH);
+    }
+
+    @Override
+    public int getTitle() {
+        return R.string.control_center_header_antiphishing;
+    }
+
     @OnClick(R.id.learn_more)
-    void onLearnMoreClicked(View v) {
+    void onLearnMoreClicked() {
         final String helpUrl = Locale.getDefault().getLanguage().equals("de") ?
                 antiPhishingHelupUrlDe : antiPhishingHelupUrlEn;
-        bus.post(new BrowserEvents.OpenUrlInNewTab(helpUrl));
-        bus.post(new Messages.DismissControlCenter());
-        telemetry.sendLearnMoreClickSignal(TelemetryKeys.ATPHISH);
+        controlCenterCallback.openLink(helpUrl);
+        controlCenterCallback.closeControlCenter();
+        telemetryCallback.sendLearnMoreClickSignal(TelemetryKeys.ATPHISH);
     }
 }

@@ -33,15 +33,16 @@ abstract class ControlCenterFragment extends Fragment {
 
     private static final String TAG = ControlCenterFragment.class.getSimpleName();
 
-    static final String KEY_HASHCODE = TAG + ".HASHCODE";
-    static final String KEY_URL = TAG + ".URL";
-    static final String KEY_IS_INCOGNITO = TAG + ".IS_INCOGNITO";
-
     protected boolean mIsIncognito = false;
+    protected String mUrl = "";
     private boolean mEnabled;
     private List<View> mTaggedViews = null;
     private int mColorEnabled;
     private int mColorDisabled;
+
+    protected ControlCenterCallback controlCenterCallback;
+
+    protected ControlCenterCallback.TelemetryCallback telemetryCallback;
 
     @Override
     final public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container,
@@ -61,6 +62,23 @@ abstract class ControlCenterFragment extends Fragment {
         return contentView;
     }
 
+    public void setCallbacks(ControlCenterCallback controlCenterCallback,
+                             ControlCenterCallback.TelemetryCallback telemetryCallback) {
+
+        this.controlCenterCallback = controlCenterCallback;
+        this.telemetryCallback = telemetryCallback;
+    }
+
+    public void setUrl(String url) {
+        this.mUrl = url;
+    }
+
+    public void setIsIncognito(boolean isIncognito) {
+        this.mIsIncognito = isIncognito;
+    }
+
+    public abstract int getTitle();
+
     @ColorInt
     private int getThemeColor(Resources.Theme theme, @AttrRes int colorAttr) {
         final TypedValue outValue = new TypedValue();
@@ -72,6 +90,10 @@ abstract class ControlCenterFragment extends Fragment {
                                                @Nullable ViewGroup container,
                                                @Nullable Bundle savedInstanceState);
 
+    abstract public void updateAdBlockList(List<AdBlockDetailsModel> adBlockDetails);
+
+    abstract public void updateTrackerList(List<TrackerDetailsModel> trackerDetails, int trackCount);
+
     protected void setEnabled(boolean enabled) {
         final boolean currentlyEnabled = mEnabled;
         mEnabled = enabled;
@@ -80,6 +102,7 @@ abstract class ControlCenterFragment extends Fragment {
         }
         updateColors();
     }
+
 
     private void updateColors() {
         final int color;

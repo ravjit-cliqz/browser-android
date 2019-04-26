@@ -1,16 +1,12 @@
 package com.cliqz.browser.controlcenter;
 
-import android.os.Bundle;
-import android.support.annotation.StringRes;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentPagerAdapter;
 
 import com.cliqz.browser.app.BrowserApp;
 
-import static com.cliqz.browser.controlcenter.ControlCenterFragment.KEY_HASHCODE;
-import static com.cliqz.browser.controlcenter.ControlCenterFragment.KEY_IS_INCOGNITO;
-import static com.cliqz.browser.controlcenter.ControlCenterFragment.KEY_URL;
+import java.util.List;
 
 /**
  * @author Ravjit Uppal
@@ -18,50 +14,50 @@ import static com.cliqz.browser.controlcenter.ControlCenterFragment.KEY_URL;
  */
 class ControlCenterAdapter extends FragmentPagerAdapter {
 
-    private final FragmentEntry[] fragments;
+    private final List<ControlCenterFragment> fragments;
 
-    private static class FragmentEntry {
-        private final @StringRes int title;
-        private final Fragment fragment;
-
-        FragmentEntry(@StringRes int title, Fragment fragment) {
-            this.title = title;
-            this.fragment = fragment;
-        }
-    }
-
-    ControlCenterAdapter(FragmentManager fragmentManager, boolean isIncognito, int hashCode, String url) {
-        super(fragmentManager);
-        final ControlCenterTabs[] values = ControlCenterTabs.values();
-        fragments = new FragmentEntry[values.length];
-        try {
-            for (int i = 0; i < values.length; i++) {
-                final ControlCenterFragment fragment = values[i].fragmentClass.newInstance();
-                final Bundle args = new Bundle();
-                args.putInt(KEY_HASHCODE, hashCode);
-                args.putString(KEY_URL, url);
-                args.putBoolean(KEY_IS_INCOGNITO, isIncognito);
-                fragment.setArguments(args);
-                fragments[i] = new FragmentEntry(values[i].title, fragment);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    ControlCenterAdapter(FragmentManager fm, List<ControlCenterFragment> fragments) {
+        super(fm);
+        this.fragments = fragments;
     }
 
     @Override
     public int getCount() {
-        return fragments.length;
+        return fragments.size();
     }
 
     @Override
     public Fragment getItem(int position) {
-        return fragments[position].fragment;
+        return fragments.get(position);
     }
 
     @Override
     public CharSequence getPageTitle(int position) {
-        return BrowserApp.getAppContext().getResources().getString(fragments[position].title);
+        return BrowserApp.getAppContext().getResources().getString(fragments.get(position).getTitle());
+    }
+
+    void updateAdBlockList(List<AdBlockDetailsModel> adBlockDetails) {
+        for (ControlCenterFragment fragment : fragments) {
+            fragment.updateAdBlockList(adBlockDetails);
+        }
+    }
+
+    void updateTrackerList(List<TrackerDetailsModel> trackerDetails, int trackCount) {
+        for (ControlCenterFragment fragment : fragments) {
+            fragment.updateTrackerList(trackerDetails, trackCount);
+        }
+    }
+
+    void setUrl(String url) {
+        for (ControlCenterFragment fragment : fragments) {
+            fragment.setUrl(url);
+        }
+    }
+
+    void setIsIncognito(boolean isIncognito) {
+        for (ControlCenterFragment fragment : fragments) {
+            fragment.setIsIncognito(isIncognito);
+        }
     }
 
 }

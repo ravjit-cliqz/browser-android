@@ -1,9 +1,7 @@
 package com.cliqz.browser.controlcenter;
 
-import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
-import android.support.annotation.LayoutRes;
 import android.support.annotation.Nullable;
 import android.support.v7.widget.AppCompatButton;
 import android.support.v7.widget.AppCompatImageView;
@@ -17,24 +15,11 @@ import android.widget.Switch;
 import android.widget.TextView;
 
 import com.cliqz.browser.R;
-import com.cliqz.browser.main.Messages;
-import com.cliqz.browser.main.Messages.ControlCenterStatus;
-import com.cliqz.browser.telemetry.Telemetry;
 import com.cliqz.browser.telemetry.TelemetryKeys;
-import com.cliqz.jsengine.AntiTracking;
-import com.cliqz.nove.Bus;
-import com.cliqz.nove.Subscribe;
-import com.facebook.react.bridge.ReadableMap;
-import com.facebook.react.bridge.ReadableMapKeySetIterator;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 
-import javax.inject.Inject;
-
-import acr.browser.lightning.bus.BrowserEvents;
-import acr.browser.lightning.preference.PreferenceManager;
 import acr.browser.lightning.view.TrampolineConstants;
 import butterknife.Bind;
 import butterknife.ButterKnife;
@@ -45,29 +30,13 @@ import butterknife.OnClick;
  * @author Ravjit Uppal
  * @author Stefano Pacifici
  */
-public class AntiTrackingFragment extends ControlCenterFragment implements CompoundButton.OnCheckedChangeListener{
+public class AntiTrackingFragment extends ControlCenterFragment
+        implements CompoundButton.OnCheckedChangeListener {
 
     public static final String TAG = AntiTrackingFragment.class.getSimpleName();
 
     private static final String antiTrackingHelpUrlDe = "https://cliqz.com/whycliqz/anti-tracking";
     private static final String antiTrackingHelpUrlEn = "https://cliqz.com/en/whycliqz/anti-tracking";
-
-    private TrackersListAdapter mAdapter;
-    private int mTrackerCount = 0;
-    private String mUrl;
-    private int mHashCode;
-
-    @Inject
-    public Bus bus;
-
-    @Inject
-    public Telemetry telemetry;
-
-    @Inject
-    public AntiTracking attrack;
-
-    @Inject
-    PreferenceManager preferenceManager;
 
     @Bind(R.id.counter)
     TextView counter;
@@ -105,63 +74,29 @@ public class AntiTrackingFragment extends ControlCenterFragment implements Compo
     @Bind(R.id.trackers_blocked)
     TextView trackersBlocked;
 
-    @Override
-    public void onCreate(@Nullable Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        final Bundle arguments = getArguments();
-        if (arguments != null) {
-            mIsIncognito = arguments.getBoolean(KEY_IS_INCOGNITO, false);
-            mUrl = arguments.getString(KEY_URL);
-            mHashCode = arguments.getInt(KEY_HASHCODE);
-        }
-    }
+    private TrackersListAdapter mAdapter;
 
     @Override
     public void onResume() {
         super.onResume();
-        bus.register(this);
-        updateList();
-    }
-
-    @Override
-    public void onPause() {
-        super.onPause();
-        bus.unregister(this);
     }
 
     @Nullable
     @Override
-    protected View onCreateThemedView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        //noinspection ConstantConditions
-        ControlCenterDialog.getComponent().inject(this);
-        mAdapter = new TrackersListAdapter(mIsIncognito, this);
-        final @LayoutRes int layout;
-        final Configuration config = getResources().getConfiguration();
-        switch (config.orientation) {
-            case Configuration.ORIENTATION_UNDEFINED:
-                if (config.screenWidthDp > config.screenHeightDp) {
-                    layout = R.layout.anti_tracking_layout_land;
-                } else {
-                    layout = R.layout.anti_tracking_layout;
-                }
-                break;
-            case Configuration.ORIENTATION_LANDSCAPE:
-                layout = R.layout.anti_tracking_layout_land;
-                break;
-            default:
-                layout = R.layout.anti_tracking_layout;
-                break;
-        }
-        final View view = inflater.inflate(layout, container, false);
+    protected View onCreateThemedView(LayoutInflater inflater, @Nullable ViewGroup container,
+                                      @Nullable Bundle savedInstanceState) {
+        mAdapter = new TrackersListAdapter(getContext(), controlCenterCallback, telemetryCallback,
+                mIsIncognito);
+        final View view = inflater.inflate(R.layout.anti_tracking_layout, container, false);
         ButterKnife.bind(this, view);
         view.setAlpha(0.97f);
         trackersList.setLayoutManager(new LinearLayoutManager(getContext()));
         trackersList.setAdapter(mAdapter);
-        final boolean isEnabled = !attrack.isWhitelisted(mUrl);
+        final boolean isEnabled = !controlCenterCallback.isUrlWhiteListed(mUrl);
         enableAttrack.setChecked(isEnabled);
         enableAttrack.setText(Uri.parse(mUrl).getHost());
         enableAttrack.setOnCheckedChangeListener(this);
-        if (!preferenceManager.isAttrackEnabled()) {
+        if (!controlCenterCallback.isAntiTrackingEnabled()) {
             setGenerallyDisabled();
         } else {
             setEnabled(isEnabled);
@@ -175,12 +110,13 @@ public class AntiTrackingFragment extends ControlCenterFragment implements Compo
             return;
         }
         setEnabled(isEnabled);
+        final String domain = Uri.parse(mUrl).getHost();
         if (isEnabled) {
-            attrack.removeDomainFromWhitelist(Uri.parse(mUrl).getHost());
+            controlCenterCallback.removeDomainToWhitelist(domain);
         } else {
-            attrack.addDomainToWhitelist(Uri.parse(mUrl).getHost());
+            controlCenterCallback.addDomainToWhitelist(domain);
         }
-        telemetry.sendCCToggleSignal(isEnabled, TelemetryKeys.ATTRACK);
+        telemetryCallback.sendCCToggleSignal(isEnabled, TelemetryKeys.ATTRACK);
     }
 
     private void setGenerallyDisabled() {
@@ -198,8 +134,6 @@ public class AntiTrackingFragment extends ControlCenterFragment implements Compo
         super.setEnabled(isEnabled);
         mAdapter.setEnabled(isEnabled);
         mAdapter.notifyDataSetChanged();
-        final ControlCenterStatus status =
-                isEnabled ? ControlCenterStatus.ENABLED : ControlCenterStatus.DISABLED;
         if (isEnabled) {
             attrackHeader.setText(getString(R.string.antitracking_header));
             trackersBlocked.setText(getString(R.string.antitracking_datapoints));
@@ -207,86 +141,56 @@ public class AntiTrackingFragment extends ControlCenterFragment implements Compo
             attrackHeader.setText(getString(R.string.antitracking_header_disabled));
             trackersBlocked.setText(getString(R.string.antitracking_datapoints_disabled));
         }
-        bus.post(new Messages.UpdateControlCenterIcon(status));
+        controlCenterCallback.updateControlCenterIcon(isEnabled);
     }
 
-    private void setTableVisibility(ArrayList<TrackerDetailsModel> details) {
-        if (!preferenceManager.isAttrackEnabled()) {
+    private void setTableVisibility(List<TrackerDetailsModel> details) {
+        if (!controlCenterCallback.isAntiTrackingEnabled()) {
             antitrackingTable.setVisibility(View.GONE);
             trackersList.setVisibility(View.GONE);
             return;
         }
         if (details != null && antitrackingTable != null) {
-            final int visibility = details.size() > 0 ?
-                    View.VISIBLE : View.GONE;
+            final int visibility = !details.isEmpty() ? View.VISIBLE : View.GONE;
             antitrackingTable.setVisibility(visibility);
         }
     }
 
-    @SuppressWarnings("UnusedParameters")
     @OnClick(R.id.button_ok)
-    void onOkClicked(View v) {
-        bus.post(new Messages.DismissControlCenter());
-        if (!preferenceManager.isAttrackEnabled()) {
-            bus.post(new Messages.EnableAttrack());
-            telemetry.sendCCOkSignal(TelemetryKeys.ACTIVATE, TelemetryKeys.ATTRACK);
-        } else {
-            telemetry.sendCCOkSignal(TelemetryKeys.OK, TelemetryKeys.ATTRACK);
-        }
+    void onOkClicked() {
+        controlCenterCallback.closeControlCenter();
+        controlCenterCallback.enableAntiTracking();
     }
 
-    @SuppressWarnings("UnusedParameters")
     @OnClick(R.id.learn_more)
-    void onLearnMoreClicked(View v) {
+    void onLearnMoreClicked() {
         final String helpUrl = Locale.getDefault().getLanguage().equals("de") ?
                 antiTrackingHelpUrlDe : antiTrackingHelpUrlEn;
-        bus.post(new BrowserEvents.OpenUrlInNewTab(helpUrl));
-        bus.post(new Messages.DismissControlCenter());
-        telemetry.sendLearnMoreClickSignal(TelemetryKeys.ATTRACK);
+        controlCenterCallback.openLink(helpUrl);
+        controlCenterCallback.closeControlCenter();
+        telemetryCallback.sendLearnMoreClickSignal(TelemetryKeys.ATTRACK);
     }
 
-    @Subscribe
-    public void updateList(Messages.UpdateAntiTrackingList event) {
-        this.mTrackerCount = event.trackerCount;
-        updateList();
+    @Override
+    public void updateAdBlockList(List<AdBlockDetailsModel> adBlockDetails) {
+        // TODO This class shouldn't implement this method. Remove it.
     }
 
-    private void updateList() {
-        ArrayList<TrackerDetailsModel> details = getTrackerDetails();
-        counter.setText(String.format(Locale.getDefault(), "%d", mTrackerCount));
-        mAdapter.updateList(details);
-        setTableVisibility(details);
-    }
-
-    private ArrayList<TrackerDetailsModel> getTrackerDetails() {
-        mTrackerCount = 0;
-        final ArrayList<TrackerDetailsModel> trackerDetails = new ArrayList<>();
-        final ReadableMap attrackData = attrack.getTabBlockingInfo(mHashCode);
-        if(attrackData == null) {
-            return trackerDetails;
+    @Override
+    public void updateTrackerList(List<TrackerDetailsModel> trackerDetails, int trackCount) {
+        if (getView() == null) {
+            return;
         }
-        final ReadableMapKeySetIterator iterator = attrackData.keySetIterator();
-        while (iterator.hasNextKey()) {
-            final String companyName = iterator.nextKey();
-            final int trackersCount = attrackData.getInt(companyName);
-            mTrackerCount += trackersCount;
-            trackerDetails.add(new TrackerDetailsModel(companyName, trackersCount));
-        }
-        Collections.sort(trackerDetails, (lhs, rhs) -> {
-            final int count = rhs.trackerCount - lhs.trackerCount;
-            return count != 0 ? count : lhs.companyName.compareToIgnoreCase(rhs.companyName);
-        });
-        return trackerDetails;
+        counter.setText(String.format(Locale.getDefault(), "%d", trackCount));
+        mAdapter.updateList(trackerDetails);
+        setTableVisibility(trackerDetails);
+
+        enableAttrack.setText(Uri.parse(mUrl).getHost());
     }
 
-    public static AntiTrackingFragment create(int hashCode, String url, boolean isIncognito) {
-        final AntiTrackingFragment fragment = new AntiTrackingFragment();
-        final Bundle arguments = new Bundle();
-        arguments.putInt(KEY_HASHCODE, hashCode);
-        arguments.putString(KEY_URL, url);
-        arguments.putBoolean(KEY_IS_INCOGNITO, isIncognito);
-        fragment.setArguments(arguments);
-        return fragment;
+    @Override
+    public int getTitle() {
+        return R.string.control_center_header_antitracking;
     }
 
     @Override
@@ -295,16 +199,16 @@ public class AntiTrackingFragment extends ControlCenterFragment implements Compo
             return;
         }
         setEnabled(isChecked);
+        final String domain = Uri.parse(mUrl).getHost();
         if (isChecked) {
-            attrack.removeDomainFromWhitelist(Uri.parse(mUrl).getHost());
+            controlCenterCallback.removeDomainToWhitelist(domain);
         } else {
-            attrack.addDomainToWhitelist(Uri.parse(mUrl).getHost());
+            controlCenterCallback.addDomainToWhitelist(domain);
         }
-        telemetry.sendCCToggleSignal(isChecked, TelemetryKeys.ATTRACK);
-        bus.post(new Messages.ReloadPage());
-        updateList();
+        telemetryCallback.sendCCToggleSignal(isChecked, TelemetryKeys.ATTRACK);
+        controlCenterCallback.reloadCurrentPage();
         if (!isChecked) {
-            bus.post(new Messages.DismissControlCenter());
+            controlCenterCallback.closeControlCenter();
         }
     }
 }
