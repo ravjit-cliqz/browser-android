@@ -33,4 +33,12 @@
     <dimen name="icon_height">24dp</dimen>
     <dimen name="fab_margin">16dp</dimen>
     <dimen name="text_padding">10dp</dimen>
+
+    <!-- Lumen -->
+    <dimen name="dashboard_measurement_value_size_large">42sp</dimen>
+    <dimen name="dashboard_measurement_value_size">30sp</dimen>
+    <dimen name="dashboard_measurement_unit_size">10sp</dimen>
+    <dimen name="dashboard_item_title_size">18sp</dimen>
+
+    <dimen name="dashboard_item_content_size">14sp</dimen>
 </resources>

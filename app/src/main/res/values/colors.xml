@@ -94,4 +94,10 @@
     <color name="text_hint_color_default">#60000000</color>
     <color name="progress_bar_bg">#E7ECEE</color>
     <color name="progress_bar_color">#2B5993</color>
+
+    <!-- Lumen -->
+    <color name="bond_general_color_blue">#3073DB</color>
+    <color name="bond_disabled_text_color">#993073DB</color>
+    <color name="dark_transparent_overlay">#99000000</color>
+    <color name="bond_disabled_state_color">#BDC0CE</color>
 </resources>

@@ -2,9 +2,11 @@ package com.cliqz.browser.main;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -23,9 +25,13 @@ import android.support.annotation.Nullable;
 import android.support.annotation.StringRes;
 import android.support.annotation.StyleRes;
 import android.support.design.widget.AppBarLayout;
+import android.support.design.widget.Snackbar;
+import android.support.design.widget.TabLayout;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.view.ViewPager;
 import android.support.v7.widget.AppCompatImageView;
 import android.support.v7.widget.AppCompatTextView;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.Patterns;
 import android.view.ContextThemeWrapper;
@@ -34,6 +40,7 @@ import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewStub;
 import android.view.animation.Animation;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.URLUtil;
@@ -45,12 +52,15 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.cliqz.browser.R;
 import com.cliqz.browser.app.BrowserApp;
-import com.cliqz.browser.controlcenter.ControlCenterDialog;
+import com.cliqz.browser.bond.controlcenter.ControlCenterPagerAdapter;
+import com.cliqz.browser.bond.controlcenter.GeckoBundle;
 import com.cliqz.browser.main.CliqzBrowserState.Mode;
 import com.cliqz.browser.main.Messages.ControlCenterStatus;
 import com.cliqz.browser.main.search.SearchView;
@@ -64,6 +74,8 @@ import com.cliqz.browser.webview.BrowserActionTypes;
 import com.cliqz.browser.webview.CliqzMessages;
 import com.cliqz.browser.widget.OverFlowMenu;
 import com.cliqz.browser.widget.SearchBar;
+import com.cliqz.jsengine.Adblocker;
+import com.cliqz.jsengine.AntiTracking;
 import com.cliqz.nove.Subscribe;
 import com.cliqz.utils.ActivityUtils;
 import com.cliqz.utils.FragmentUtilsV4;
@@ -84,7 +96,6 @@ import java.net.URLDecoder;
 import javax.inject.Inject;
 
 import acr.browser.lightning.bus.BrowserEvents;
-import acr.browser.lightning.constant.Constants;
 import acr.browser.lightning.utils.UrlUtils;
 import acr.browser.lightning.utils.Utils;
 import acr.browser.lightning.view.AnimatedProgressBar;
@@ -150,6 +161,18 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     @Inject
     AppBackgroundManager appBackgroundManager;
 
+    LinearLayout mDashboardControls;
+
+    private TextView mStateButtonBondDashboard;
+    private TextView mVpnButtonBondDashboard;
+    private TextView mClearButtonBondDashboard;
+
+    private ControlCenterPagerAdapter mControlCenterPagerAdapter;
+
+    private ViewPager mControlCenterPager;
+    private View mControlCenterContainer;
+    private TabLayout mTabLayout;
+
     @Bind(R.id.progress_view)
     AnimatedProgressBar progressBar;
 
@@ -196,6 +219,14 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     @Nullable
     @Bind(R.id.cc_icon)
     AppCompatImageView ccIcon;
+
+    @Inject
+    Adblocker adblocker;
+
+    @Inject
+    AntiTracking antiTracking;
+
+    private String mDomainName = "";
 
     @NonNull
     public final String getTabId() {
@@ -283,6 +314,15 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         ButterKnife.bind(this, view);
+        mControlCenterPager = (ViewPager) view.findViewById(R.id.control_center_pager);
+        mControlCenterContainer = view.findViewById(R.id.control_center_container);
+        mControlCenterPagerAdapter = new ControlCenterPagerAdapter(getChildFragmentManager(), getContext());
+        mControlCenterPagerAdapter.init();
+        mControlCenterPager.setAdapter(mControlCenterPagerAdapter);
+        mTabLayout = (TabLayout) view.findViewById(R.id.control_center_tab_layout);
+        mTabLayout.setupWithViewPager(mControlCenterPager);
+
+        initBondControlButtons(view);
         searchBar.setSearchEditText(searchEditText);
         searchBar.setProgressBar(progressBar);
         final MainActivity activity = (MainActivity) getActivity();
@@ -503,11 +543,15 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     // TODO @Ravjit, the dialog should disappear if you pause the app
     @OnClick(R.id.control_center)
     void showControlCenter() {
-        final WebView webView = mLightningView.getWebView();
+        if (mControlCenterContainer.getVisibility() == View.VISIBLE) {
+            mControlCenterContainer.setVisibility(View.GONE);
+        } else {
+            mControlCenterContainer.setVisibility(View.VISIBLE);
+        }/*final WebView webView = mLightningView.getWebView();
         final ControlCenterDialog controlCenterDialog = ControlCenterDialog
                 .create(mStatusBar, mIsIncognito, webView.hashCode(), mLightningView.getUrl());
         controlCenterDialog.show(getChildFragmentManager(), Constants.CONTROL_CENTER);
-        telemetry.sendControlCenterOpenSignal(mIsIncognito, mTrackerCount);
+        telemetry.sendControlCenterOpenSignal(mIsIncognito, mTrackerCount);*/
     }
 
     @OnClick(R.id.yt_download_icon)
@@ -1140,7 +1184,6 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
         mLightningView.reload();
     }
 
-
     @Subscribe
     public void enableAttrack(Messages.EnableAttrack event) {
         preferenceManager.setAttrackEnabled(true);
@@ -1323,4 +1366,98 @@ public class TabFragment extends BaseFragment implements LightningView.LightingV
     public void openFromOverview(CliqzMessages.OpenLink event) {
         mOverviewEvent = event;
     }
+
+    public void initBondControlButtons(View view) {
+        mDashboardControls = (LinearLayout) ((ViewStub) view.findViewById(R.id
+                .bond_dashboard_controls)).inflate();
+        mStateButtonBondDashboard = (TextView) mDashboardControls.findViewById
+                (R.id.bond_dashboard_state_button);
+        mVpnButtonBondDashboard = (TextView) mDashboardControls.findViewById(R.id
+                .bond_dashboard_vpn_button);
+        mClearButtonBondDashboard = (TextView) mDashboardControls.findViewById(R.id
+                .bond_dashboard_clear_button);
+
+        mStateButtonBondDashboard.setTag(true);
+
+        mStateButtonBondDashboard.setOnClickListener(v -> {
+            if ((boolean) v.getTag()) {
+                new AlertDialog.Builder(getContext())
+                        .setTitle(R.string.bond_dashboard_ultimate_protection)
+                        .setMessage(
+                                getString(R.string.bond_dashboard_ultimate_protection_pause_dialog,
+                                        TextUtils.isEmpty(mDomainName) ? "home" : mDomainName))
+                        .setPositiveButton(
+                                R.string.bond_dashboard_ultimate_protection_pause_dialog_positive_button,
+                                (dialogInterface, i) -> {
+                                    final boolean changedState = !(boolean) v.getTag();
+                                    v.setTag(changedState);
+                                    toggleUltimateProtection(changedState);
+                                })
+                        .setNegativeButton(
+                                R.string.bond_dashboard_ultimate_protection_pause_dialog_negative_button,
+                                null)
+                        .show();
+            } else {
+                final boolean changedState = !(boolean) v.getTag();
+                v.setTag(changedState);
+                toggleUltimateProtection(changedState);
+            }
+        });
+
+        mVpnButtonBondDashboard.setOnClickListener(v -> {
+            mControlCenterContainer.setVisibility(View.GONE);
+            //showHomePager(HomeConfig.VPN_PANEL_ID,null);
+        });
+
+        mClearButtonBondDashboard.setOnClickListener(v -> new AlertDialog.Builder(v.getContext())
+                .setTitle(R.string.bond_dashboard_clear_dialog_title)
+                .setMessage(R.string.bond_dashboard_clear_dialog_message)
+                .setPositiveButton(R.string.button_ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        mControlCenterPagerAdapter.setTrackingData(new GeckoBundle());
+                        //EventDispatcher.getInstance().dispatch("Privacy:ClearInsightsData", null);
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show());
+    }
+
+    private void toggleUltimateProtection(boolean changedState) {
+        bondDashboardStateChange(changedState);
+        if (!changedState) {
+            Snackbar.make(getView(), R.string.bond_dashboard_protection_off, Snackbar.LENGTH_SHORT).show();
+        }
+        /*
+        final List<String> updatedWhiteList = new ArrayList<>(Arrays.asList(mWhiteList));
+        if (changedState) {
+            updatedWhiteList.remove(mDomainName);
+        } else {
+            updatedWhiteList.add(mDomainName);
+            SnackbarBuilder.builder(this)
+                    .message(R.string.bond_dashboard_protection_off)
+                    .duration(Snackbar.LENGTH_SHORT)
+                    .buildAndShow();
+        }*/
+        /*final GeckoBundle geckoBundle = new GeckoBundle();
+        geckoBundle.putStringArray("site_whitelist", updatedWhiteList);
+        EventDispatcher.getInstance().dispatch("Privacy:SetInfo", geckoBundle);*/
+    }
+
+    public void bondDashboardStateChange(boolean isEnabled) {
+        final int stateDrawableId;
+        final int stateTextId;
+        if (isEnabled) {
+            stateDrawableId = R.drawable.ic_bond_pause;
+            stateTextId = R.string.bond_dashboard_contols_pause;
+        } else {
+            stateDrawableId = R.drawable.ic_bond_start;
+            stateTextId = R.string.bond_dashboard_contols_start;
+        }
+        mStateButtonBondDashboard.setCompoundDrawablesWithIntrinsicBounds(0, stateDrawableId, 0, 0);
+        mStateButtonBondDashboard.setText(getString(stateTextId));
+        mControlCenterPagerAdapter.updateViewComponent(0, R.id.bond_dashboard_state_button, isEnabled);
+        mControlCenterPagerAdapter.updateViewComponent(1, R.id.bond_dashboard_state_button, isEnabled);
+    }
+
 }

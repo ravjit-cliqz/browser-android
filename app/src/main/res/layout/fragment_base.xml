@@ -50,7 +50,7 @@
                     android:textColorHighlight="@color/text_highlight_color"
                     android:textColorHint="#aaaaaa"
                     android:textCursorDrawable="@drawable/custom_cursor"
-                    tools:drawableLeft="@drawable/ic_cliqz_back"
+                    tools:drawableLeft="@drawable/ic_clear_black"
                     tools:drawableRight="@drawable/ic_clear_black"
                     tools:textSelectHandle="@drawable/text_select_handle_middle_material"
                     tools:textSelectHandleLeft="@drawable/text_select_handle_left_material"
@@ -70,6 +70,36 @@
 
     <!--add views which are fixed to the bottom of the screen here-->
 
+    <RelativeLayout
+        android:id="@+id/control_center_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:layout_marginTop="@dimen/search_edit_text_h"
+        android:visibility="gone">
+
+        <ViewStub
+            android:id="@+id/bond_dashboard_controls"
+            android:inflatedId="@+id/bond_dashboard_controls_inflated"
+            android:layout="@layout/bond_dashboard_controls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <android.support.design.widget.TabLayout
+            android:id="@+id/control_center_tab_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:elevation="2dp"
+            style="@style/tab_layout_style"
+            android:layout_below="@+id/bond_dashboard_controls_inflated" />
+
+        <com.cliqz.browser.bond.controlcenter.ControlCenterViewPager
+            android:id="@+id/control_center_pager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/transparent"
+            android:layout_below="@+id/control_center_tab_layout" />
+    </RelativeLayout>
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
