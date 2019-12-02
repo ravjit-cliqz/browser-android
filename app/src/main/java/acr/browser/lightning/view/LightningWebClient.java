@@ -13,8 +13,10 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Message;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.text.method.PasswordTransformationMethod;
+import android.view.MotionEvent;
 import android.view.View;
 import android.webkit.HttpAuthHandler;
 import android.webkit.SslErrorHandler;
@@ -206,6 +208,20 @@ class LightningWebClient extends WebViewClient implements AntiPhishing.AntiPhish
         view.post(() -> lightningView.eventBus.post(msg));
     }
 
+    private void dispatchTouch() {
+        final long downTime = SystemClock.uptimeMillis();
+        final long eventTime = SystemClock.uptimeMillis() + 100;
+        final float x = 100f;
+        final float y = 100f;
+        final int metaState = 0;
+        final MotionEvent actionDown = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_DOWN,
+                x, y, metaState);
+        final MotionEvent actionUp = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_UP,
+                x, y, metaState);
+        lightningView.dispatchTouchEvent(actionDown);
+        lightningView.dispatchTouchEvent(actionUp);
+    }
+
     @SuppressLint("ObsoleteSdkInt")
     @TargetApi(Build.VERSION_CODES.KITKAT)
     @Override
@@ -235,6 +251,9 @@ class LightningWebClient extends WebViewClient implements AntiPhishing.AntiPhish
         view.evaluateJavascript(Constants.JAVASCRIPT_COLLAPSE_SECTIONS, null);
         lightningView.injectReadabilityScript();
         post(view, new CliqzMessages.OnPageFinished());
+        if (url.contains(TrampolineConstants.TRAMPOLINE_COMMAND_PARAM_NAME)) {
+            dispatchTouch();
+        }
     }
 
     @Override
